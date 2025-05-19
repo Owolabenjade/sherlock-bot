@@ -1,0 +1,26 @@
+# storage.rules - Firebase Storage security rules
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Lock down all access by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+    
+    // CV uploads can only be accessed by the server
+    match /cv-uploads/{phoneNumber}/{fileName} {
+      // Only allow access via Firebase Admin SDK (server-side)
+      allow read, write: if false;
+    }
+    
+    // Review reports can be read by owner with a signed URL
+    match /review-reports/{phoneNumber}/{fileName} {
+      // Only allow read with a signed URL (managed by the server)
+      allow read: if request.auth != null && 
+                   request.auth.token.phone_number == phoneNumber;
+      
+      // Only allow write via Firebase Admin SDK (server-side)
+      allow write: if false;
+    }
+  }
+}

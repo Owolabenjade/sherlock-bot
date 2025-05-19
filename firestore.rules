@@ -1,0 +1,26 @@
+# firestore.rules - Firestore security rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Lock down all access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // User sessions can be read and updated only by authenticated server
+    match /userSessions/{phoneNumber} {
+      // Only allow access via Firebase Admin SDK (server-side)
+      allow read, write: if false;
+    }
+    
+    // Review results can be read by authenticated server and owner
+    match /reviewResults/{reviewId} {
+      // Only allow read by the owner of the review
+      allow read: if request.auth != null && 
+                    resource.data.phoneNumber == request.auth.token.phone_number;
+      
+      // Only allow write via Firebase Admin SDK (server-side)
+      allow write: if false;
+    }
+  }
+}
