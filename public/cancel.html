@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Cancelled - Sherlock CV Review</title>
+    <link rel="stylesheet" href="css/payment-pages.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container cancel-container">
+        <div class="logo-container">
+            <img src="images/logo.png" alt="Sherlock Bot Logo" class="logo">
+        </div>
+        
+        <div class="card">
+            <div class="icon-container">
+                <img src="images/cancel-icon.svg" alt="Cancelled" class="status-icon">
+            </div>
+            
+            <h1>Payment Cancelled</h1>
+            
+            <p class="message">
+                Your payment has been cancelled. No charges have been made.
+            </p>
+            
+            <div class="options">
+                <h2>You can:</h2>
+                <div class="option-buttons">
+                    <a href="whatsapp://send?phone=YOUR_PHONE_NUMBER&text=Let%20me%20try%20the%20payment%20again" class="button primary-button">
+                        Try Again
+                    </a>
+                    <a href="whatsapp://send?phone=YOUR_PHONE_NUMBER&text=I%20want%20to%20try%20the%20basic%20review%20instead" class="button secondary-button">
+                        Try Basic Review
+                    </a>
+                </div>
+            </div>
+            
+            <div class="feedback-section">
+                <h3>Why did you cancel?</h3>
+                <form id="feedbackForm" class="feedback-form">
+                    <select id="cancelReason" name="cancelReason">
+                        <option value="">-- Select a reason --</option>
+                        <option value="price">The price was too high</option>
+                        <option value="payment">Payment method issue</option>
+                        <option value="trust">Not sure about the service</option>
+                        <option value="mistake">Clicked cancel by mistake</option>
+                        <option value="other">Other reason</option>
+                    </select>
+                    <textarea id="feedbackText" name="feedbackText" placeholder="Additional comments (optional)"></textarea>
+                    <button type="submit" class="button feedback-button">Send Feedback</button>
+                </form>
+            </div>
+            
+            <p class="support-note">
+                If you need any assistance, contact us at <a href="mailto:support@sherlockbot.com">support@sherlockbot.com</a>
+            </p>
+        </div>
+        
+        <div class="footer">
+            &copy; 2025 Sherlock Bot - CV Review Service
+        </div>
+    </div>
+    
+    <script src="js/payment-pages.js"></script>
+</body>
+</html>

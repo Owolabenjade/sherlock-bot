@@ -1,43 +1,41 @@
 // src/controllers/paymentController.js - Handles payment webhook requests
 
-const stripe = require('stripe')(process.env.STRIPE_API_KEY);
+const crypto = require('crypto');
 const { updateUserSession, getUserSession } = require('../services/firestoreService');
 const { sendWhatsAppMessage } = require('../services/twilioService');
 const logger = require('../utils/logger');
 
 /**
- * Handle Stripe payment webhook
+ * Handle Paystack payment webhook
  */
 exports.paymentWebhook = async (req, res) => {
-  const signature = req.headers['stripe-signature'];
-  let event;
+  // Validate webhook signature
+  const hash = crypto.createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
+    .update(JSON.stringify(req.body))
+    .digest('hex');
+  
+  if (hash !== req.headers['x-paystack-signature']) {
+    logger.error('Invalid Paystack webhook signature');
+    return res.status(400).send('Invalid signature');
+  }
 
   try {
-    // Verify webhook signature
-    if (process.env.STRIPE_WEBHOOK_SECRET !== 'test_mode') {
-      event = stripe.webhooks.constructEvent(
-        req.rawBody, // Important: need to use raw body here, configure Express accordingly
-        signature,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-    } else {
-      // For development/testing
-      event = req.body;
-    }
-
-    // Handle different event types
-    switch (event.type) {
-      case 'checkout.session.completed':
-        await handleSuccessfulPayment(event.data.object);
+    // Get event data
+    const event = req.body;
+    
+    // Process different event types
+    switch (event.event) {
+      case 'charge.success':
+        await handleSuccessfulPayment(event.data);
         break;
       
-      case 'payment_intent.succeeded':
+      case 'transfer.success':
         // Additional handling if needed
-        logger.info('Payment intent succeeded');
+        logger.info('Transfer successful');
         break;
       
       default:
-        logger.info(`Unhandled event type: ${event.type}`);
+        logger.info(`Unhandled event type: ${event.event}`);
     }
 
     res.status(200).send({ received: true });
@@ -50,12 +48,13 @@ exports.paymentWebhook = async (req, res) => {
 /**
  * Handle successful payment completion
  */
-async function handleSuccessfulPayment(session) {
+async function handleSuccessfulPayment(data) {
   // Extract customer phone number from metadata
-  const phoneNumber = session.metadata ? session.metadata.phone_number : null;
+  const metadata = data.metadata || {};
+  const phoneNumber = metadata.phone_number;
   
   if (!phoneNumber) {
-    logger.error('No phone number found in payment session metadata');
+    logger.error('No phone number found in payment metadata');
     return;
   }
 
@@ -72,7 +71,7 @@ async function handleSuccessfulPayment(session) {
       // Notify user that advanced processing will begin
       await sendWhatsAppMessage(
         phoneNumber,
-        "Thank you for your payment! I'll now process your CV for an advanced review. This will take just a moment..."
+        "Thank you for your payment! I will now process your CV for an advanced review. This will take just a moment..."
       );
     } else {
       userSession.state = 'upload_cv';
@@ -84,6 +83,12 @@ async function handleSuccessfulPayment(session) {
         "Thank you for your payment! Please upload your CV (PDF or DOCX, max 5MB) to receive your advanced review."
       );
     }
+    
+    // Add payment details to user session
+    userSession.paymentReference = data.reference;
+    userSession.paymentAmount = data.amount / 100; // Convert kobo to naira
+    userSession.paymentCurrency = data.currency;
+    userSession.paymentDate = new Date().toISOString();
     
     await updateUserSession(phoneNumber, userSession);
     logger.info(`Payment completed and session updated for ${phoneNumber}`);
@@ -97,29 +102,35 @@ async function handleSuccessfulPayment(session) {
  */
 exports.createPaymentLink = async (phoneNumber, reviewType = 'advanced') => {
   try {
-    // Create a Stripe Checkout Session
-    const priceId = process.env.STRIPE_PRICE_ID;
+    // Clean the phone number for use in metadata
+    const cleanPhone = phoneNumber.replace('whatsapp:', '');
     
-    const session = await stripe.checkout.Session.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-      mode: 'payment',
-      success_url: process.env.PAYMENT_SUCCESS_URL,
-      cancel_url: process.env.PAYMENT_CANCEL_URL,
+    // Get price from environment
+    const amount = parseInt(process.env.ADVANCED_REVIEW_PRICE || '5000'); // Amount in kobo (e.g., 5000 kobo = ₦50.00)
+    const currency = process.env.PAYMENT_CURRENCY || 'NGN';
+    
+    // Create a Paystack initialization
+    const paystack = require('paystack')(process.env.PAYSTACK_SECRET_KEY);
+    const response = await paystack.transaction.initialize({
+      amount: amount,
+      email: `${cleanPhone.replace(/\+/g, '')}@temporary.email`, // Paystack requires an email
+      currency: currency,
+      reference: `cvreview_${Date.now()}_${cleanPhone.replace(/\+/g, '')}`,
+      callback_url: process.env.PAYMENT_SUCCESS_URL || 'https://example.com/success',
       metadata: {
-        phone_number: phoneNumber,
+        phone_number: cleanPhone,
         review_type: reviewType
       }
     });
     
-    return session.url;
+    if (!response.status) {
+      throw new Error(response.message || 'Failed to create payment link');
+    }
+    
+    logger.info(`Created Paystack payment link for ${phoneNumber}: ${response.data.authorization_url}`);
+    return response.data.authorization_url;
   } catch (error) {
-    logger.error('Error creating payment link:', error);
+    logger.error(`Error creating payment link for ${phoneNumber}:`, error);
     // Return fallback URL for development/MVP
     return 'https://example.com/payment-link';
   }
